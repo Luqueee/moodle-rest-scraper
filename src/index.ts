@@ -7,9 +7,6 @@ import cookieParser from 'cookie-parser';
 import { time } from 'console';
 dotenv.config();
 
-const USERNAME = process.env.MOODLE_USERNAME;
-const PASSWORD = process.env.MOODLE_PASSWORD;
-
 const app: Express = express();
 const port = process.env.PORT || 3000;
 
