@@ -4,31 +4,60 @@ import puppeteer from 'puppeteer';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
-import { time } from 'console';
+
 dotenv.config();
+
+// apply jwt middleware
 
 const app: Express = express();
 const port = process.env.PORT || 3000;
+
+const protectedEndpoints = ['/courses', '/sessionid'];
+
+const SESSIONID = process.env.SESSIONID;
+app.use((req: Request, res: Response, next) => {
+    const secretKey = req.header('x-secret-key')?.toString();
+    console.log(secretKey, SESSIONID);
+    if (secretKey != SESSIONID && protectedEndpoints.includes(req.path)) {
+        return res.status(403).send('Forbidden: Invalid or missing secret key');
+    }
+
+    next();
+});
 
 app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req: Request, res: Response) => {
-    res.send('Express + TypeScript Server');
+    const endpoints = [
+        { method: 'GET', path: '/' },
+        {
+            method: 'POST',
+            path: '/sessionid',
+            body: { username: '', password: '' },
+            header: { 'x-secret-key': '' },
+        },
+        {
+            method: 'POST',
+            path: '/courses',
+            body: { username: '', password: '' },
+            header: { 'x-secret-key': '' },
+        },
+    ];
+    res.json(endpoints);
 });
 
-const axiosAuth = axios.create({
-    withCredentials: true,
-    baseURL: 'https://frontal.ies-sabadell.cat/cicles-moodle',
-});
-
-app.get('/login', async (req: Request, res: Response) => {
+app.post('/sessionid', async (req: Request, res: Response) => {
+    const username = req.body.username.toString();
+    const password = req.body.password.toString();
+    const sessionData = req.session;
+    console.log(sessionData);
     const cookie = await axios.get(
         'https://frontal.ies-sabadell.cat/cicles-moodle/login/token.php',
         {
             params: {
-                username: 'e.acabreral',
-                password: 'Adria2007!',
+                username: username,
+                password: password,
                 service: 'moodle_mobile_app',
             },
         }
@@ -47,7 +76,7 @@ app.post('/courses', async (req: Request, res: Response) => {
 
     try {
         const browser = await puppeteer.launch({
-            headless: true, // Launch in headless mode
+            headless: false, // Launch in headless mode
             //executablePath: '/usr/bin/google-chrome',
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
@@ -205,49 +234,6 @@ app.post('/courses', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Error during login or fetching courses:', error);
         res.status(500).send('Error during login or fetching courses');
-    }
-});
-
-app.get('/courses2', async (req: Request, res: Response) => {
-    try {
-        const cookie = req.cookies.MoodleSession.toString();
-        console.log(cookie);
-
-        const page = await axios.get(
-            'https://frontal.ies-sabadell.cat/cicles-moodle/course/view.php?id=18',
-            {
-                headers: {
-                    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                    'Accept-Encoding': 'gzip, deflate, br, zstd',
-                    'Accept-Language': 'es-US,es-419;q=0.9,es;q=0.8,ca;q=0.7',
-                    'Cache-Control': 'no-cache',
-                    Connection: 'keep-alive',
-                    Cookie: `MoodleSession=${cookie}`,
-                    Host: 'frontal.ies-sabadell.cat',
-                    Pragma: 'no-cache',
-                    Referer:
-                        'https://frontal.ies-sabadell.cat/cicles-moodle/login/index.php',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'same-origin',
-                    'Sec-Fetch-User': '?1',
-                    'Upgrade-Insecure-Requests': '1',
-                    'User-Agent':
-                        'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36',
-                    'sec-ch-ua':
-                        '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-                    'sec-ch-ua-mobile': '?1',
-                    'sec-ch-ua-platform': '"Android"',
-                },
-            }
-        );
-
-        console.log(page);
-
-        res.send(page.data);
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Error fetching course data');
     }
 });
 
