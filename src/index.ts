@@ -43,141 +43,168 @@ app.post('/courses', async (req: Request, res: Response) => {
     const username = req.body.username.toString();
     const password = req.body.password.toString();
 
-    console.log(username, password);
+    console.log(`Attempting login with username: ${username}`);
+
     try {
         const browser = await puppeteer.launch({
-            headless: false, // Launch in headless mode
+            headless: true, // Launch in headless mode
+            //executablePath: '/usr/bin/google-chrome',
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
 
-        const context = browser.defaultBrowserContext();
-        await context.clearPermissionOverrides();
-        const pages = await browser.pages();
-        for (const page of pages) {
-            const cookies = await page.cookies();
-            for (const cookie of cookies) {
-                await page.deleteCookie(cookie);
-            }
-        }
-
         const page = await browser.newPage();
 
-        const maxRetries = 1;
-        let loginSuccess = false;
+        try {
+            let currentUrl = page.url();
+            let loginAttempts = 0;
+            const maxAttempts = 3;
 
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-            try {
+            while (loginAttempts < maxAttempts) {
+                console.log('Opening login page');
                 await page.goto(
-                    'https://frontal.ies-sabadell.cat/cicles-moodle/login/index.php'
+                    'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php',
+                    { waitUntil: 'networkidle0' }
                 );
 
-                await page.waitForSelector('#username'); // Ensure the page has loaded properly
-                await page.type('#username', username, { delay: 10 });
-                await page.type('#password', password, { delay: 10 });
-                await page.click('#loginbtn');
+                if (!currentUrl.includes('login/index.php')) {
+                    console.log('Logging in');
+                    // Log the initial URL
+                    console.log('Current page:', page.url());
 
-                // Ensure the page has fully loaded by waiting for a specific element
-                await page.waitForSelector('#page-header', { timeout: 5000 });
+                    // Ensure the login form is visible
+                    await page.waitForSelector('#username');
+                    await page
+                        .type('#username', username, { delay: 30 })
+                        .then(() => console.log('user typed'));
+                    await page
+                        .type('#password', password, { delay: 30 })
+                        .then(() => console.log('password typed'));
+                    await page.click('#loginbtn');
+                    console.log('Login button clicked');
 
-                // Check if login was successful by looking for a specific element that appears after login
-                const loginError = await page.$('.loginerrors');
-                const header = await page.$('#page-header');
-                console.log('header', header, loginError);
-                if (header) {
-                    loginSuccess = true;
+                    // Wait for navigation to complete
+                    // Log the URL after navigation
+                    currentUrl = await page.url();
+                    console.log('Current URL after login:', currentUrl);
+
+                    // Check if login was successful
+                    if (!currentUrl.includes('login/index.php')) {
+                        console.log('Login successful');
+                        break;
+                    } else {
+                        console.error('Login failed, still on login page');
+                    }
+                } else {
+                    console.log('Already logged in');
                     break;
                 }
-            } catch (error) {
-                console.error(`Login attempt ${attempt + 1} failed:`, error);
+
+                loginAttempts++;
+                if (loginAttempts >= maxAttempts) {
+                    console.error('Max login attempts reached');
+                    return res
+                        .status(500)
+                        .send('Login failed after multiple attempts');
+                }
             }
-        }
 
-        if (!loginSuccess) {
-            await browser.close();
-            return res
-                .status(500)
-                .send('Failed to login after multiple attempts');
-        }
-
-        try {
-            // Wait for the element to be available
-            page.goto(
-                'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php'
-            );
-            await page.waitForSelector('.col.d-flex.px-0.mb-2'); // Ensure the page has loaded properly
-
-            const courses = await page.evaluate(() => {
-                const courses = Array.from(
-                    document.querySelectorAll('.col.d-flex.px-0.mb-2')
-                ).map((course) => {
-                    const titleElement = course.querySelector('.coursename');
-                    const title = titleElement
-                        ? titleElement.textContent?.trim()
-                        : 'No title';
-                    const linkElement = course.querySelector('a');
-                    const link = linkElement ? linkElement.href : 'No link';
-                    const imageElement = course.querySelector('.card-img-top');
-                    const imageUrl = imageElement
-                        ? (
-                              imageElement as HTMLElement
-                          ).style.backgroundImage.slice(5, -2)
-                        : 'No image';
-                    return { title, link, imageUrl };
-                });
-                return courses;
-            });
-
-            const detailedCourses = await Promise.all(
-                courses.map(async (course) => {
-                    const coursePage = await browser.newPage();
-                    await coursePage.goto(course.link);
-                    // Extract additional details if needed
-
-                    // Extract the required items
-                    const items = await coursePage.evaluate(() => {
-                        const sections = Array.from(
-                            document.querySelectorAll('.section.course-section')
-                        );
-                        return sections.map((section) => {
-                            const sectionTitleElement =
-                                section.querySelector('.sectionname a');
-                            const sectionTitle = sectionTitleElement
-                                ? sectionTitleElement.textContent?.trim()
-                                : 'No title';
-                            const activities = Array.from(
-                                section.querySelectorAll('.activity-wrapper')
-                            ).map((activity) => {
-                                const activityTitleElement =
-                                    activity.querySelector('.activityname a');
-                                const activityTitle = activityTitleElement
-                                    ? activityTitleElement.textContent?.trim()
-                                    : 'No title';
-                                const activityLink = activityTitleElement
-                                    ? (
-                                          activityTitleElement as HTMLAnchorElement
-                                      ).href
-                                    : 'No link';
-                                return { activityTitle, activityLink };
-                            });
-                            return { sectionTitle, activities };
-                        });
-                    });
-
-                    await coursePage.close();
-                    return { course, items };
-                })
-            );
-
-            await browser.close();
-            return res.send(detailedCourses);
+            // Continue with your logic here...
         } catch (error) {
-            console.error('Error during navigation:', error);
-            await browser.close();
-            return res.status(500).send('Error during navigation');
+            console.error('Error during login:', error);
+            return res.status(500).send('Error during login');
         }
+
+        //console.log('aaaaaaa')
+
+        await page.goto(
+            'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php'
+        );
+        await page.waitForSelector('.col.d-flex.px-0.mb-2'); // Ensure the page has loaded properly
+        let currentUrl = await page.url();
+
+        console.log('courses url', currentUrl);
+        if (
+            currentUrl !=
+            'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php'
+        ) {
+            res.send('not logged').status(202);
+        } else {
+            console.log('into courses avoiding error');
+        }
+
+        currentUrl = await page.url();
+        console.log('Fetching courses', currentUrl);
+
+        const courses = await page.evaluate(() => {
+            return Array.from(
+                document.querySelectorAll('.col.d-flex.px-0.mb-2')
+            ).map((course) => {
+                const titleElement = course.querySelector('.coursename');
+                const title = titleElement
+                    ? titleElement.textContent?.trim()
+                    : 'No title';
+                const linkElement = course.querySelector('a');
+                const link = linkElement ? linkElement.href : 'No link';
+                const imageElement = course.querySelector('.card-img-top');
+                const imageUrl = imageElement
+                    ? (imageElement as HTMLElement).style.backgroundImage.slice(
+                          5,
+                          -2
+                      )
+                    : 'No image';
+                return { title, link, imageUrl };
+            });
+        });
+
+        //console.log(courses)
+
+        const detailedCourses = await Promise.all(
+            courses.map(async (course) => {
+                const coursePage = await browser.newPage();
+                await coursePage.goto(course.link);
+                // Extract additional details if needed
+
+                // Extract the required items
+                const items = await coursePage.evaluate(() => {
+                    const sections = Array.from(
+                        document.querySelectorAll('.section.course-section')
+                    );
+                    return sections.map((section) => {
+                        const sectionTitleElement =
+                            section.querySelector('.sectionname a');
+                        const sectionTitle = sectionTitleElement
+                            ? sectionTitleElement.textContent?.trim()
+                            : 'No title';
+                        const activities = Array.from(
+                            section.querySelectorAll('.activity-wrapper')
+                        ).map((activity) => {
+                            const activityTitleElement =
+                                activity.querySelector('.activityname a');
+                            const activityTitle = activityTitleElement
+                                ? activityTitleElement.textContent?.trim()
+                                : 'No title';
+                            const activityLink = activityTitleElement
+                                ? (activityTitleElement as HTMLAnchorElement)
+                                      .href
+                                : 'No link';
+                            return { activityTitle, activityLink };
+                        });
+                        return { sectionTitle, activities };
+                    });
+                });
+
+                await coursePage.close();
+                return { course, items };
+            })
+        );
+
+        await browser.close();
+        console.log('results sended');
+
+        return res.send(detailedCourses);
     } catch (error) {
-        console.error('Error during login:', error);
-        return res.status(500).send('Error during login');
+        console.error('Error during login or fetching courses:', error);
+        res.status(500).send('Error during login or fetching courses');
     }
 });
 
