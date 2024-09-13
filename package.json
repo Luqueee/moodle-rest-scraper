@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
-        "dev": "node --loader=ts-node/esm --env-file=.env --watch src/index.ts",
+        "dev": "tsx src/index.ts",
         "build": "tsc --build",
         "start": "node ."
     },
@@ -27,6 +27,7 @@
         "express": "^4.21.0",
         "puppeteer": "^23.3.0",
         "tough-cookie": "^4.1.4",
-        "ts-node": "^10.9.2"
+        "ts-node": "^10.9.2",
+        "tsx": "^4.19.1"
     }
 }
