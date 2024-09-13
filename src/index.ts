@@ -40,8 +40,8 @@ app.get('/login', async (req: Request, res: Response) => {
     res.send(cookie.data);
 });
 app.post('/courses', async (req: Request, res: Response) => {
-    const username = await req.body.username.toString();
-    const password = await req.body.password.toString();
+    const username = req.body.username.toString();
+    const password = req.body.password.toString();
 
     console.log(username, password);
     try {
@@ -61,32 +61,30 @@ app.post('/courses', async (req: Request, res: Response) => {
         }
 
         const page = await browser.newPage();
-        await page.goto(
-            'https://frontal.ies-sabadell.cat/cicles-moodle/login/index.php'
-        );
 
         const maxRetries = 1;
         let loginSuccess = false;
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             try {
+                await page.goto(
+                    'https://frontal.ies-sabadell.cat/cicles-moodle/login/index.php'
+                );
+
                 await page.waitForSelector('#username'); // Ensure the page has loaded properly
                 await page.type('#username', username, { delay: 10 });
                 await page.type('#password', password, { delay: 10 });
                 await page.click('#loginbtn');
 
-                // Wait for navigation to complete
-                await page.waitForNavigation({
-                    waitUntil: 'domcontentloaded',
-                });
+                // Ensure the page has fully loaded by waiting for a specific element
+                await page.waitForSelector('#page-header', { timeout: 5000 });
 
                 // Check if login was successful by looking for a specific element that appears after login
                 const loginError = await page.$('.loginerrors');
-                if (!loginError && (await page.$('#page-header'))) {
+                const header = await page.$('#page-header');
+                console.log('header', header, loginError);
+                if (header) {
                     loginSuccess = true;
-                    await page.goto(
-                        'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php'
-                    );
                     break;
                 }
             } catch (error) {
@@ -95,13 +93,17 @@ app.post('/courses', async (req: Request, res: Response) => {
         }
 
         if (!loginSuccess) {
-            res.send('Failed to login after multiple attempts').status(500);
             await browser.close();
+            return res
+                .status(500)
+                .send('Failed to login after multiple attempts');
         }
 
         try {
             // Wait for the element to be available
-
+            page.goto(
+                'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php'
+            );
             await page.waitForSelector('.col.d-flex.px-0.mb-2'); // Ensure the page has loaded properly
 
             const courses = await page.evaluate(() => {
@@ -166,16 +168,16 @@ app.post('/courses', async (req: Request, res: Response) => {
                 })
             );
 
-            res.send(detailedCourses);
-
             await browser.close();
+            return res.send(detailedCourses);
         } catch (error) {
             console.error('Error during navigation:', error);
-            res.status(500).send('Error during navigation');
+            await browser.close();
+            return res.status(500).send('Error during navigation');
         }
     } catch (error) {
         console.error('Error during login:', error);
-        res.status(500).send('Error during login');
+        return res.status(500).send('Error during login');
     }
 });
 
