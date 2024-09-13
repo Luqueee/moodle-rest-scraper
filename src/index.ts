@@ -15,6 +15,7 @@ const port = process.env.PORT || 3000;
 const protectedEndpoints = ['/courses', '/sessionid'];
 
 const SESSIONID = process.env.SESSIONID;
+const HEADLESS = process.env.HEADLESS === 'true';
 app.use((req: Request, res: Response, next) => {
     const secretKey = req.header('x-secret-key')?.toString();
     console.log(secretKey, SESSIONID);
@@ -76,7 +77,7 @@ app.post('/courses', async (req: Request, res: Response) => {
 
     try {
         const browser = await puppeteer.launch({
-            headless: false, // Launch in headless mode
+            headless: HEADLESS, // Launch in headless mode
             //executablePath: '/usr/bin/google-chrome',
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
