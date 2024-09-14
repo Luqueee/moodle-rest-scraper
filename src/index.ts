@@ -16,12 +16,19 @@ const protectedEndpoints = ['/courses', '/sessionid'];
 
 const moodle_url = process.env.MOODLE_URL;
 const SESSIONID = process.env.SESSIONID;
-const HEADLESS = process.env.HEADLESS === 'true';
+const HEADLESS = process.env.HEADLESS == 'true';
+const DEBUG = process.env.DEBUG == 'true';
+function writeLogMessage(message: string) {
+    if (DEBUG) {
+        console.log(`[${new Date().toISOString()}] ${message}`);
+    }
+}
+
 app.use((req: Request, res: Response, next) => {
-    console.log(req.ip, req.method, req.path);
+    console.log(`${req.ip} ${req.method} ${req.path}`);
 
     const secretKey = req.header('x-secret-key')?.toString();
-    //console.log(secretKey, SESSIONID);
+    //writeLogMessage(secretKey, SESSIONID);
     if (secretKey != SESSIONID && protectedEndpoints.includes(req.path)) {
         return res.status(403).send('Forbidden: Invalid or missing secret key');
     }
@@ -55,7 +62,7 @@ app.post('/sessionid', async (req: Request, res: Response) => {
     const username = req.body.username.toString();
     const password = req.body.password.toString();
     const sessionData = req.session;
-    console.log(sessionData);
+    writeLogMessage(JSON.stringify(sessionData));
     const cookie = await axios.get(`${moodle_url}/login/token.php`, {
         params: {
             username: username,
@@ -64,7 +71,7 @@ app.post('/sessionid', async (req: Request, res: Response) => {
         },
     });
 
-    console.log(cookie.data);
+    writeLogMessage(JSON.stringify(cookie.data));
 
     res.cookie('MoodleSession', cookie.data.token, {});
     res.send(cookie.data);
@@ -73,7 +80,7 @@ app.post('/courses', async (req: Request, res: Response) => {
     const username = req.body.username.toString();
     const password = req.body.password.toString();
 
-    console.log(`Attempting login with username: ${username}`);
+    writeLogMessage(`Attempting login with username: ${username}`);
 
     try {
         const browser = await puppeteer.launch({
@@ -90,47 +97,47 @@ app.post('/courses', async (req: Request, res: Response) => {
             const maxAttempts = 3;
 
             while (loginAttempts < maxAttempts) {
-                console.log('Opening login page');
+                writeLogMessage('Opening login page');
                 await page.goto(`${moodle_url}/my/courses.php`, {
                     waitUntil: 'networkidle0',
                 });
 
                 if (!currentUrl.includes('login/index.php')) {
-                    console.log('Logging in');
+                    writeLogMessage('Logging in');
                     // Log the initial URL
-                    console.log('Current page:', page.url());
+                    writeLogMessage('Current page: ' + page.url());
 
                     // Ensure the login form is visible
                     await page.waitForSelector('#username');
                     await page
                         .type('#username', username, { delay: 30 })
-                        .then(() => console.log('user typed'));
+                        .then(() => writeLogMessage('user typed'));
                     await page
                         .type('#password', password, { delay: 30 })
-                        .then(() => console.log('password typed'));
+                        .then(() => writeLogMessage('password typed'));
                     await page.click('#loginbtn');
-                    console.log('Login button clicked');
+                    writeLogMessage('Login button clicked');
 
                     // Wait for navigation to complete
                     // Log the URL after navigation
                     currentUrl = await page.url();
-                    console.log('Current URL after login:', currentUrl);
+                    writeLogMessage('Current URL after login: ' + currentUrl);
 
                     // Check if login was successful
                     if (!currentUrl.includes('login/index.php')) {
-                        console.log('Login successful');
+                        writeLogMessage('Login successful');
                         break;
                     } else {
-                        console.error('Login failed, still on login page');
+                        writeLogMessage('Login failed, still on login page');
                     }
                 } else {
-                    console.log('Already logged in');
+                    writeLogMessage('Already logged in');
                     break;
                 }
 
                 loginAttempts++;
                 if (loginAttempts >= maxAttempts) {
-                    console.error('Max login attempts reached');
+                    writeLogMessage('Max login attempts reached');
                     return res
                         .status(500)
                         .send('Login failed after multiple attempts');
@@ -139,25 +146,25 @@ app.post('/courses', async (req: Request, res: Response) => {
 
             // Continue with your logic here...
         } catch (error) {
-            console.error('Error during login:', error);
+            writeLogMessage('Error during login: ' + error);
             return res.status(500).send('Error during login');
         }
 
-        //console.log('aaaaaaa')
+        //writeLogMessage('aaaaaaa')
 
         await page.goto(`${moodle_url}/my/courses.php`);
         await page.waitForSelector('.col.d-flex.px-0.mb-2'); // Ensure the page has loaded properly
         let currentUrl = await page.url();
 
-        console.log('courses url', currentUrl);
+        writeLogMessage('courses url: ' + currentUrl);
         if (currentUrl != `${moodle_url}/my/courses.php`) {
             res.send('not logged').status(202);
         } else {
-            console.log('into courses avoiding error');
+            writeLogMessage('into courses avoiding error');
         }
 
         currentUrl = await page.url();
-        console.log('Fetching courses', currentUrl);
+        writeLogMessage('Fetching courses: ' + currentUrl);
 
         const courses = await page.evaluate(() => {
             return Array.from(
@@ -180,7 +187,7 @@ app.post('/courses', async (req: Request, res: Response) => {
             });
         });
 
-        //console.log(courses)
+        //writeLogMessage(courses)
 
         const detailedCourses = await Promise.all(
             courses.map(async (course) => {
@@ -223,15 +230,15 @@ app.post('/courses', async (req: Request, res: Response) => {
         );
 
         await browser.close();
-        console.log('results sended');
+        writeLogMessage('results sended');
 
         return res.send(detailedCourses);
     } catch (error) {
-        console.error('Error during login or fetching courses:', error);
+        writeLogMessage('Error during login or fetching courses: ' + error);
         res.status(500).send('Error during login or fetching courses');
     }
 });
 
 app.listen(port, () => {
-    console.log(`[server]: Server is running at http://localhost:${port}`);
+    writeLogMessage(`[server]: Server is running at http://localhost:${port}`);
 });
