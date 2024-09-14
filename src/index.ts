@@ -14,6 +14,7 @@ const port = process.env.PORT || 3000;
 
 const protectedEndpoints = ['/courses', '/sessionid'];
 
+const moodle_url = process.env.MOODLE_URL;
 const SESSIONID = process.env.SESSIONID;
 const HEADLESS = process.env.HEADLESS === 'true';
 app.use((req: Request, res: Response, next) => {
@@ -53,16 +54,13 @@ app.post('/sessionid', async (req: Request, res: Response) => {
     const password = req.body.password.toString();
     const sessionData = req.session;
     console.log(sessionData);
-    const cookie = await axios.get(
-        'https://frontal.ies-sabadell.cat/cicles-moodle/login/token.php',
-        {
-            params: {
-                username: username,
-                password: password,
-                service: 'moodle_mobile_app',
-            },
-        }
-    );
+    const cookie = await axios.get(`${moodle_url}/login/token.php`, {
+        params: {
+            username: username,
+            password: password,
+            service: 'moodle_mobile_app',
+        },
+    });
 
     console.log(cookie.data);
 
@@ -91,10 +89,9 @@ app.post('/courses', async (req: Request, res: Response) => {
 
             while (loginAttempts < maxAttempts) {
                 console.log('Opening login page');
-                await page.goto(
-                    'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php',
-                    { waitUntil: 'networkidle0' }
-                );
+                await page.goto(`${moodle_url}/my/courses.php`, {
+                    waitUntil: 'networkidle0',
+                });
 
                 if (!currentUrl.includes('login/index.php')) {
                     console.log('Logging in');
@@ -146,17 +143,12 @@ app.post('/courses', async (req: Request, res: Response) => {
 
         //console.log('aaaaaaa')
 
-        await page.goto(
-            'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php'
-        );
+        await page.goto(`${moodle_url}/my/courses.php`);
         await page.waitForSelector('.col.d-flex.px-0.mb-2'); // Ensure the page has loaded properly
         let currentUrl = await page.url();
 
         console.log('courses url', currentUrl);
-        if (
-            currentUrl !=
-            'https://frontal.ies-sabadell.cat/cicles-moodle/my/courses.php'
-        ) {
+        if (currentUrl != `${moodle_url}/my/courses.php`) {
             res.send('not logged').status(202);
         } else {
             console.log('into courses avoiding error');
