@@ -18,8 +18,10 @@ const moodle_url = process.env.MOODLE_URL;
 const SESSIONID = process.env.SESSIONID;
 const HEADLESS = process.env.HEADLESS === 'true';
 app.use((req: Request, res: Response, next) => {
+    console.log(req.ip, req.method, req.path);
+
     const secretKey = req.header('x-secret-key')?.toString();
-    console.log(secretKey, SESSIONID);
+    //console.log(secretKey, SESSIONID);
     if (secretKey != SESSIONID && protectedEndpoints.includes(req.path)) {
         return res.status(403).send('Forbidden: Invalid or missing secret key');
     }
